@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { registerEmployee, loginEmployee, filterOptions } = require('../controllers/employeeController');
+const { registerEmployee, loginEmployee, googleLogin, filterOptions } = require('../controllers/employeeController');
 
 router.post('/register', registerEmployee);
 router.post('/login', loginEmployee);
+router.post('/google-login', googleLogin);
 router.get('/filters', filterOptions);
 
 

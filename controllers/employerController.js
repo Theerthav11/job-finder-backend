@@ -3,11 +3,14 @@ const bcrypt = require('bcrypt');
 const jwt = require("jsonwebtoken")
 const dotenv = require('dotenv');
 const Job = require('../models/Job');
-const nodemailer = require('nodemailer')
+const nodemailer = require('nodemailer');
+const { OAuth2Client } = require('google-auth-library');
 // const twilio = require('twilio');
 
 
 dotenv.config()
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // const client = new twilio(accountSid, authToken);
 
@@ -78,6 +81,50 @@ const loginEmployer = async (req, res) => {
   }
 };
 
+const googleLogin = async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { email, name, sub: googleId } = payload;
+
+    let employer = await Employer.findOne({ email });
+
+    if (!employer) {
+      // Create new employer with Google data
+      employer = new Employer({
+        name,
+        email,
+        googleId,
+        phone: '', // Will need to be filled later
+        age: 18, // Default value
+        gender: 'other', // Default value
+        password: await bcrypt.hash(Math.random().toString(36), 10), // Random password
+      });
+      await employer.save();
+    }
+
+    const jwtToken = jwt.sign({ id: employer._id }, "your_jwt_secret", { expiresIn: "3d" });
+
+    res.status(200).json({
+      token: jwtToken,
+      employer: {
+        id: employer._id,
+        name: employer.name,
+        email: employer.email
+      }
+    });
+  } catch (error) {
+    console.error('Google login error:', error);
+    res.status(401).json({ message: 'Invalid Google token' });
+  }
+};
+
 const contactEmployee = async (req, res) => {
   try {
     const { userId, jobId } = req.body;
@@ -127,4 +174,4 @@ const contactEmployee = async (req, res) => {
 };
 
 
-module.exports = { registerEmployer, loginEmployer, contactEmployee };
+module.exports = { registerEmployer, loginEmployer, googleLogin, contactEmployee };

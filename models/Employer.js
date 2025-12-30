@@ -7,6 +7,7 @@ const employerSchema = new mongoose.Schema({
   age: Number,
   gender: String,
   password: String, // hashed
+  googleId: String, // Google OAuth ID
   createdAt: { type: Date, default: Date.now }
 });
 

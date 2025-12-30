@@ -1,8 +1,10 @@
 const Employee = require('../models/Employee');
 const bcrypt = require('bcrypt');
-const Job = require('../models/Job')
+const Job = require('../models/Job');
+const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 
-const jwt = require('jsonwebtoken')
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const registerEmployee = async (req, res) => {
   try {
@@ -66,6 +68,51 @@ const loginEmployee = async (req, res) => {
     }
   };
 
+const googleLogin = async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { email, name, sub: googleId } = payload;
+
+    let employee = await Employee.findOne({ email });
+
+    if (!employee) {
+      // Create new employee with Google data
+      employee = new Employee({
+        fullname: name,
+        email,
+        googleId,
+        phone: '', // Will need to be filled later
+        age: 18, // Default value
+        gender: 'other', // Default value
+        qualification: 'graduate', // Default value
+        password: await bcrypt.hash(Math.random().toString(36), 10), // Random password
+      });
+      await employee.save();
+    }
+
+    const jwtToken = jwt.sign({ id: employee._id }, "your_jwt_secret", { expiresIn: "3d" });
+
+    res.status(200).json({
+      token: jwtToken,
+      employee: {
+        id: employee._id,
+        name: employee.fullname,
+        email: employee.email
+      }
+    });
+  } catch (error) {
+    console.error('Google login error:', error);
+    res.status(401).json({ message: 'Invalid Google token' });
+  }
+};
+
   const filterOptions = async(req, res) => {
     try {
       const categories = await Job.distinct('title');
@@ -87,4 +134,4 @@ const loginEmployee = async (req, res) => {
     }
   }
 
-module.exports = { registerEmployee, loginEmployee, filterOptions };
+module.exports = { registerEmployee, loginEmployee, googleLogin, filterOptions };
