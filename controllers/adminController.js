@@ -14,7 +14,7 @@ const adminLogin = async(req, res) =>{
 
     if (username === adminUsername && password === adminPassword) {
 
-        const token = jwt.sign({ id: adminUsername }, "your_jwt_secret", { expiresIn: "1d" });
+        const token = jwt.sign({ id: adminUsername }, process.env.JWT_SECRET, { expiresIn: "1d" });
 
         res.status(200).json({ message: "Login successful" , token});
     } else {

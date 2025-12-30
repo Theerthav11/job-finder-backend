@@ -50,7 +50,7 @@ const loginEmployee = async (req, res) => {
         return res.status(401).send("Invalid password");
       }
 
-      const token = jwt.sign({ id: employee._id }, "your_jwt_secret", { expiresIn: "3d" });
+      const token = jwt.sign({ id: employee._id }, process.env.JWT_SECRET, { expiresIn: "3d" });
 
       res.status(200).json({
         message: "Login successful",
@@ -97,7 +97,7 @@ const googleLogin = async (req, res) => {
       await employee.save();
     }
 
-    const jwtToken = jwt.sign({ id: employee._id }, "your_jwt_secret", { expiresIn: "3d" });
+    const jwtToken = jwt.sign({ id: employee._id }, process.env.JWT_SECRET, { expiresIn: "3d" });
 
     res.status(200).json({
       token: jwtToken,
