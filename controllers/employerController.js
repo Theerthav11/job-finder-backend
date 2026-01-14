@@ -3,32 +3,20 @@ const bcrypt = require('bcrypt');
 const jwt = require("jsonwebtoken")
 const dotenv = require('dotenv');
 const Job = require('../models/Job');
-const nodemailer = require('nodemailer');
-const { OAuth2Client } = require('google-auth-library');
-// const twilio = require('twilio');
-
+const { handleGoogleAuth } = require('../utils/googleAuth');
+const { sendShortlistEmail } = require('../utils/emailService');
+const { successResponse, errorResponse } = require('../utils/response');
+const { ConflictError, AuthenticationError, NotFoundError, ServerError } = require('../utils/errors');
 
 dotenv.config()
 
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-
-// const client = new twilio(accountSid, authToken);
-
-const transporter = nodemailer.createTransport({
-  service: "gmail", // You can use other services like Outlook, or custom SMTP
-  auth: {
-    user: process.env.EMAIL, // Replace with your email
-    pass: process.env.EMAIL_PASSWORD, // Replace with your email password or app password
-  },
-});
-
-const registerEmployer = async (req, res) => {
+const registerEmployer = async (req, res, next) => {
   try {
     const { name, email, phone, age, gender, password } = req.body;
 
     const existingEmployer = await Employer.findOne({ email });
     if (existingEmployer) {
-      return res.status(400).send('Email already registered');
+      throw new ConflictError('Email already registered');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -43,133 +31,90 @@ const registerEmployer = async (req, res) => {
     });
 
     await newEmployer.save();
-    res.status(201).send('Employer registered successfully');
+    return successResponse(res, null, 'Employer registered successfully', 201);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
+    next(err);
   }
 };
 
-const loginEmployer = async (req, res) => {
+const loginEmployer = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
     const employer = await Employer.findOne({ email });
     if (!employer) {
-      return res.status(401).send('Invalid email');
+      throw new AuthenticationError('Invalid email or password');
     }
 
     const isMatch = await bcrypt.compare(password, employer.password);
     if (!isMatch) {
-      return res.status(401).send('Invalid password');
+      throw new AuthenticationError('Invalid email or password');
     }
 
     const token = jwt.sign({ id: employer._id }, process.env.JWT_SECRET, { expiresIn: "3d" });
 
-    res.status(200).json({
-      message: "Login successful",
+    return successResponse(res, {
       token,
       employer: {
         id: employer._id,
         name: employer.name,
         email: employer.email
       }
-    });
+    }, 'Login successful');
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
+    next(err);
   }
 };
 
-const googleLogin = async (req, res) => {
+const googleLogin = async (req, res, next) => {
   try {
     const { token } = req.body;
 
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
+    const employer = await handleGoogleAuth(Employer, token, {
+      phone: '',
+      age: 18,
+      gender: 'other'
     });
-
-    const payload = ticket.getPayload();
-    const { email, name, sub: googleId } = payload;
-
-    let employer = await Employer.findOne({ email });
-
-    if (!employer) {
-      // Create new employer with Google data
-      employer = new Employer({
-        name,
-        email,
-        googleId,
-        phone: '', // Will need to be filled later
-        age: 18, // Default value
-        gender: 'other', // Default value
-        password: await bcrypt.hash(Math.random().toString(36), 10), // Random password
-      });
-      await employer.save();
-    }
 
     const jwtToken = jwt.sign({ id: employer._id }, process.env.JWT_SECRET, { expiresIn: "3d" });
 
-    res.status(200).json({
+    return successResponse(res, {
       token: jwtToken,
       employer: {
         id: employer._id,
         name: employer.name,
         email: employer.email
       }
-    });
+    }, 'Login successful');
   } catch (error) {
-    console.error('Google login error:', error);
-    res.status(401).json({ message: 'Invalid Google token' });
+    next(error);
   }
 };
 
-const contactEmployee = async (req, res) => {
+const contactEmployee = async (req, res, next) => {
   try {
     const { userId, jobId } = req.body;
 
     // Populate the interested employees
     const job = await Job.findById(jobId).populate("interested", "fullname email phone");
 
-    if (!job) return res.status(404).json({ message: "Job not found" });
+    if (!job) {
+      throw new NotFoundError('Job not found');
+    }
 
     // Find the specific employee from the interested list
     const employee = job.interested.find(emp => emp._id.toString() === userId);
 
     if (!employee) {
-      return res.status(400).json({ message: "Employee is not interested in this job" });
+      throw new NotFoundError('Employee is not interested in this job');
     }
 
-    const mailOptions = {
-      from: "your_email@gmail.com",
-      to: employee.email,
-      subject: "Application Shortlisted",
-      html: `
-        <p>Hi ${employee.fullname},</p>
-        <p>Your application for ${job.title} at ${job.company} has been shortlisted.</p><br/>
-        <p>For further movements please contact the following</p>
-        <p>Call: ${job.phone} <br/> Whatsapp: ${job.whatsapp} </p>
-      `,
-    };
+    // Send email using utility
+    await sendShortlistEmail(employee, job);
 
-    transporter.sendMail(mailOptions, (err, info) => {
-      if (err) {
-        console.error("Error sending email:", err);
-        return res.status(500).json({ error: "Failed to send email!" });
-      } else {
-        console.log("Email sent:", info.response);
-        return res.json({
-          message: "Contact email sent successfully!",
-        });
-      }
-    });
-
-     // Removed SMS logic and the console.log("SMS sent:", sms.sid); because sms logic is commented out.
-
+    return successResponse(res, null, 'Contact email sent successfully');
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Server error");
+    next(err);
   }
 };
 

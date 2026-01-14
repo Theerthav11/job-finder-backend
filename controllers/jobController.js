@@ -1,98 +1,115 @@
 // controllers/jobController.js
 const Job = require('../models/Job');
+const { successResponse } = require('../utils/response');
+const { NotFoundError } = require('../utils/errors');
 
-
-const createJob = async (req, res) => {
+const createJob = async (req, res, next) => {
   try {
     const newJob = new Job(req.body);
     await newJob.save();
-    res.status(201).json({ message: 'Job posted successfully', job: newJob });
+    return successResponse(res, { job: newJob }, 'Job posted successfully', 201);
   } catch (err) {
-    res.status(500).json({ message: 'Error posting job', error: err.message });
-    console.log(err.message)
+    next(err);
   }
 };
 
-const getAllJobs = async (req, res) => {
+const getAllJobs = async (req, res, next) => {
   try {
     const jobs = await Job.find();
-    res.status(200).json(jobs);
+    return successResponse(res, { jobs }, 'Jobs fetched successfully');
   } catch (err) {
-    res.status(500).json({ message: 'Error fetching jobs', error: err.message });
+    next(err);
   }
 };
 
-const getJobsByEmployer = async (req, res) => {
+const getJobsByEmployer = async (req, res, next) => {
   try {
     const { employerId } = req.params;
     const jobs = await Job.find({ employer: employerId });
-    res.status(200).json(jobs);
+    return successResponse(res, { jobs }, 'Jobs fetched successfully');
   } catch (err) {
-    res.status(500).json({ message: 'Error fetching jobs', error: err.message });
+    next(err);
   }
 };
 
-const getJob = async(req, res) => {
-    try{
-        const { id } = req.params;
-        const job = await Job.findOne({ _id: id });
-        res.status(200).json(job);
-    }catch(err){
-        res.status(500).json({message: "Error fetching job"})
+const getJob = async(req, res, next) => {
+  try{
+    const { id } = req.params;
+    const job = await Job.findOne({ _id: id });
+    
+    if (!job) {
+      throw new NotFoundError('Job not found');
     }
+    
+    return successResponse(res, { job }, 'Job fetched successfully');
+  }catch(err){
+    next(err);
+  }
 }
 
-const updateJob = async (req, res) => {
+const updateJob = async (req, res, next) => {
   try {
     const { id } = req.params;
     const updatedJob = await Job.findByIdAndUpdate(id, req.body, { new: true });
-    res.status(200).json({ message: 'Job updated successfully', job: updatedJob });
+    
+    if (!updatedJob) {
+      throw new NotFoundError('Job not found');
+    }
+    
+    return successResponse(res, { job: updatedJob }, 'Job updated successfully');
   } catch (err) {
-    res.status(500).json({ message: 'Error updating job', error: err.message });
+    next(err);
   }
 };
 
-const deleteJob = async (req, res) => {
+const deleteJob = async (req, res, next) => {
   try {
     const { id } = req.params;
-    await Job.findByIdAndDelete(id);
-    res.status(200).json({ message: 'Job deleted successfully' });
+    const deletedJob = await Job.findByIdAndDelete(id);
+    
+    if (!deletedJob) {
+      throw new NotFoundError('Job not found');
+    }
+    
+    return successResponse(res, null, 'Job deleted successfully');
   } catch (err) {
-    res.status(500).json({ message: 'Error deleting job', error: err.message });
+    next(err);
   }
 };
 
-const markInterest = async(req, res) => {
+const markInterest = async(req, res, next) => {
+  try {
     const { jobId, employeeId } = req.body;
 
-  try {
     const job = await Job.findById(jobId);
 
-    if (!job) return res.status(404).json({ message: "Job not found" });
+    if (!job) {
+      throw new NotFoundError('Job not found');
+    }
 
     if (!job.interested.includes(employeeId)) {
       job.interested.push(employeeId);
       await job.save();
     }
 
-    res.status(200).json({ message: "Interest marked successfully" });
+    return successResponse(res, null, 'Interest marked successfully');
   } catch (error) {
-    res.status(500).json({ message: "Error marking interest", error });
+    next(error);
   }
 }
 
-const getInterestedEmployees = async(req, res) => {
-    try {
-        const job = await Job.findById(req.params.jobId).populate("interested"); // assuming `interested` is an array of ObjectId
-    
-        if (!job) {
-          return res.status(404).json({ message: "Job not found" });
-        }
-    
-        res.json(job.interested); // returns array of employee objects
-      } catch (error) {
-        res.status(500).json({ error: error.message });
-      }
+const getInterestedEmployees = async(req, res, next) => {
+  try {
+    const job = await Job.findById(req.params.jobId).populate("interested");
+
+    if (!job) {
+      throw new NotFoundError('Job not found');
+    }
+
+    return successResponse(res, { employees: job.interested }, 'Interested employees fetched successfully');
+  } catch (error) {
+    next(error);
+  }
 }
 
 module.exports = {
